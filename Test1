@@ -1,0 +1,42 @@
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+
+# 設定隨機種子以確保結果可重複
+np.random.seed(42)
+n_policies = 1000
+
+# 1. 建立標準生命表 (Mortality Table)
+# 假設 q_x 代表該年齡的死亡/重疾發生機率
+mortality_table = pd.DataFrame({
+    'age': range(20, 61),
+    'base_prob': [0.001 * (1.08 ** (age - 20)) for age in range(20, 61)]
+})
+
+# 2. 模擬保單原始資料 (Policyholder Data)
+data = pd.DataFrame({
+    'policy_id': range(1001, 1001 + n_policies),
+    'age': np.random.randint(20, 60, size=n_policies),
+    'gender': np.random.choice(['M', 'F'], size=n_policies, p=[0.5, 0.5]),
+    'bmi': np.round(np.random.normal(24, 4, size=n_policies), 1),
+    'exposure': np.random.choice([0.5, 1.0], size=n_policies, p=[0.2, 0.8]) # 保單經過年數 (Exposure)
+})
+
+# 併入生命表的基礎發生率作為特徵
+data = data.merge(mortality_table, on='age', how='left')
+
+# 模擬真實的理賠次數 (Claim Count) - 假設真實發生率受性別與 BMI 影響
+lambda_param = data['base_prob'] * data['exposure'] * np.where(data['gender'] == 'M', 1.2, 1.0) * (data['bmi'] / 22)
+data['claim_count'] = np.random.poisson(lambda_param)
+
+# 模擬每次理賠的金額 (Severity) - 假設單次理賠服從 Gamma 分佈
+def generate_claim_amount(count):
+    if count == 0:
+        return 0.0
+    return np.sum(np.random.gamma(shape=2.0, scale=5000, size=count))
+
+data['claim_amount'] = data['claim_count'].apply(generate_claim_amount)
+
+print("--- 原始保單資料前 5 筆 ---")
+display(data[['policy_id', 'age', 'gender', 'bmi', 'exposure', 'base_prob', 'claim_count', 'claim_amount']].head())
